@@ -1,0 +1,188 @@
+
+# Population Health and Economic Impact of Different 
+# Types of Storms in the United States of America
+## author: Balogun Stephen Taiye
+## date: `r Sys.Date()`
+========================================
+
+## SYNOPSIS  
+
+Storms and other severe weather conditions have both public health and economic impacts to the nation.  Loss of lives and injuries, damages to crops and properties are huge losses  the direct and indirect impact of which can have dire consequences in the longer term.  
+This study was conducted using the storm database of the [National Oceanic and Atmospheric Adminstrations (NOAA)]("https://d396qusza40orc.cloudfront.net/repdata%2Fdata%2FStormData.csv.bz2").  The data was collected between 1950 and November 2011.  Population health impact measures *Fatalities* and *Injuries* caused by storms  while the Economic impact measures (in dollars) values of *properties* and *crops* damaged during storms.    
+The study shows that **Tornado** storms has the highest population health impact with *Fatalities* and *Injuries*  estimated to be about `r impactFatalities$fatalities[1]` and `r impactInjuries$injuries[1]` representing `r percent`% and `r percent2`% of total fatalities and injuries respectively.  
+**Flood storms** however has the highest economic impact accounting for about `r impactOnEconomy$propertiesDamaged[1]/10^9`(in trillion dollars) losses since 1965 representing `r percent3`% of all losses.  
+
+## DATA PROCESSING  
+
+The downloaded file used for this studies is a `csv.bz2` zipped  file named `rawData`
+
+```{r "setting global options"}
+library(knitr)
+opts_chunk$set(echo = TRUE, warning = FALSE, message = FALSE)
+```
+
+```{r readData, cache = TRUE}
+## reading in the data and unzipping the file
+rawData <- "https://d396qusza40orc.cloudfront.net/repdata%2Fdata%2FStormData.csv.bz2"
+if(!file.exists("rawData.csv.bz2")) {
+download.file(url = rawData, destfile = "./rawData.csv.bz2")
+}
+
+library(R.utils)  ## to unzip the bz2 formatted file
+if(!file.exists("rawData.csv")) {
+bunzip2(filename = "./rawData.csv.bz2", destname = "./rawData.csv")
+}
+
+rawData <- read.csv("./rawData.csv")  ## reads in the csv file 
+```
+
+The rawData was downloaded on `r Sys.Date()`.  
+The `rawData` contains `r nrow(rawData)` rows and `r ncol(rawData)` columns.  
+Next a bit of data processing is done to make the data more tidy and subset the required data  for this analysis. 
+
+```{r tidyData, tidy = TRUE}
+names(rawData) <- tolower(names(rawData))  ## changes column names from capital letters to small letters
+names(rawData) <- gsub(pattern = "*_", replacement = ".", x = names(rawData))
+## replaces "_" in column names with "."
+library(dplyr)  
+requiredData <- select(rawData, c(evtype, fatalities, injuries, propdmg,propdmgexp, cropdmg, cropdmgexp))                           
+library(printr)  ## to display nicely formatted tables
+head(requiredData)
+```
+
+The `propdmgexp` and the `cropdmgexp` columns of the data represents the exponential values of properties damaged and  crops damaged respectively.  
+The letters **[hH], K, [mM] and B** represents **hundreds, thousands millions and billions** respectively.  
+
+These letters are replaced with their corresponding exponents in numbers using the code below.  
+```{r exponentsReplaced}
+requiredData$propdmgexp <- gsub(pattern = "[hH]", replacement = 2,
+                                x = requiredData$propdmgexp)
+requiredData$propdmgexp <- gsub(pattern = "K", replacement = 3,
+                                x = requiredData$propdmgexp)
+requiredData$propdmgexp <- gsub(pattern = "[mM]", replacement = 6,
+                                x = requiredData$propdmgexp)
+requiredData$propdmgexp <- gsub(pattern = "B", replacement = 9,
+                                x = requiredData$propdmgexp)
+requiredData$cropdmgexp <- gsub(pattern = "[kK]", replacement = 3, 
+                                x = requiredData$cropdmgexp)
+requiredData$cropdmgexp <- gsub(pattern = "[mM]", replacement = 6, 
+                                x = requiredData$cropdmgexp)
+requiredData$cropdmgexp <- gsub(pattern = "B", replacement = 6, 
+                                x = requiredData$cropdmgexp)
+```
+
+Now that the *letter exponents* have been replaced by their *numeric* equivalents, i proceed to multiply the `propdmg` with the `propdmgexp`  and the `cropdmg` with the `cropdmgexp` to get the absolute values of `propertiesDamaged` and `cropsDamaged` respectively.  
+
+```{r Data}
+Data <- mutate(requiredData, 
+               propertiesDamaged = propdmg * 10^as.numeric(propdmgexp))
+Data <- mutate(Data, 
+               cropDamaged = cropdmg * 10^as.numeric(cropdmgexp))
+```
+The processed `Data` now looks like this:  
+```{r "head(Data)"}
+head(Data)
+```
+
+Finally for data processing, i remove the columns used for the merging since they are no longer needed. I call this new data `finalData`
+
+```{R finalData}
+finalData <- select(Data, -c(propdmg, propdmgexp, cropdmg, cropdmgexp))
+head(finalData)
+```
+
+## RESULTS  
+
+###  __*across the US, which types of events are most harmful with respect to         population health?*__  
+To answer this question, I made a subset of the final data containing the event type `evtype`, `fatalities` and `injuries`;  add-up the total of `fatalities` and `injuries` for each of the `evtype` and arrange them from the most harmful to the least harmful.  
+
+```{r pophealth}
+impactOnPopulation <- finalData %>%
+                        group_by(evtype) %>%
+                        summarise(fatalities = sum(fatalities, na.rm = TRUE), 
+                        injuries = sum(injuries, na.rm = TRUE))
+
+impactFatalities <- arrange(impactOnPopulation[, 1:2], desc(fatalities))
+head(impactFatalities)
+
+impactInjuries <- arrange(impactOnPopulation[, c(1, 3)], desc(injuries))
+head(impactInjuries)
+
+```
+
+Next I plot a bar graph of `fatalities` and `injuries` for the 10 most harmful event types using the `ggplot2` plotting system.  
+
+```{r "graph of 10 leading cause of Fatalities", fig.width = 16}
+library(ggplot2)
+plot1 <- ggplot(data = impactFatalities[1:10, ], aes(x = evtype, y = fatalities))
+plot1 <- plot1 + geom_bar(stat = "identity") + 
+        labs(title = "10 leading causes of Fatalities", x = "event types") +
+        theme_bw()
+print(plot1)
+```
+
+```{r "percentage tornado fatalities", comment = ""}
+percent <- with(impactFatalities, round((fatalities[1] / sum(fatalities) * 100), digits = 2))
+print(percent)
+```
+This shows that `evtype tornado` has the highest fatalities accounting for `r percent`% of all fatalities. 
+```{r "graph of 10 leading cause of Injuries", fig.width = 16}
+plot2 <- ggplot(data = impactInjuries[1:10, ], aes(x = evtype))
+plot2 <- plot1 + geom_bar(stat = "identity") + 
+        labs(title = "10 leading causes of Injuries", x = "event types") + 
+        theme_bw()
+print(plot2)
+```
+
+```{r "percentage tornado injuries", comment = ""}
+percent2 <- with(impactInjuries, round((injuries[1] / sum(injuries) * 100), digits = 2))
+print(percent2)
+```
+This also shows that `evtype tornado` has the highest injuries accounting for `r percent2`% of all fatalities.  
+Therefore, `evtype tornado` has the most harmful population health effect of all the event types.  
+###  __*across the US, which types of event have the greatest economic                consequence*__  
+First I made a subset of the `finalData` containing `evtype`, `propertiesDamaged`, and `cropsDamaged`;  add-up the total for each of the `evtype`, then and the columns `propertiesDamaged¬ and `cropdDamaged` together   and arrange the output in descending order.  
+
+```{r "impact on economy"}
+impactOnEconomy <- finalData %>% 
+                        group_by(evtype) %>%
+                        summarise(propertiesDamaged = sum(propertiesDamaged, 
+                        na.rm = TRUE), 
+                        cropsDamaged = sum(cropDamaged, na.rm =TRUE))
+impactOnEconomy <- mutate(impactOnEconomy, 
+                          impact = propertiesDamaged + cropsDamaged)
+impactOnEconomy <- arrange(impactOnEconomy, desc(impact))
+
+head(impactOnEconomy)
+```
+
+Lastly, I plot a bar graph of the economic consequences(impact) of the top ten event types.  
+
+```{r "Plot of economic impact of top 10 events", fig.width = 16}
+plot3 <- ggplot(data = impactOnEconomy[1:10, ], aes(x = evtype, y = impact / 10^9))
+plot3 <- plot3 + geom_bar(stat = "identity") + 
+        labs(title = "economic impact of top 10 events", x = "event type", 
+             y = "Economic impact(trillion Dollars)") + 
+        theme_bw()
+print(plot3)
+```
+
+```{r "percentage flood damages", comment = ""}
+percent3 <- with(impactOnEconomy, round((impact[1] / sum(impact) * 100), digits = 2))
+print(percent3)
+```
+
+This also shows that `evtype flood` has the highest impact on the economy accounting for `r percent3`% of all economic losses. 
+
+## CONCLUSION
+
+The study shows that from the data available, `tornado` storms have the highest population health impact while `flood` has the highest economic health impact.  
+
+```{r}
+sessionInfo()
+```
+
+```{r}
+knit2html(input = "RRassessment4.Rmd")
+```
+
